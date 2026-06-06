@@ -1,0 +1,257 @@
+esphome:
+  name: seeed-ledbar
+  friendly_name: seeed-ledbar
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on:
+          id: aqi_strip
+          effect: "AQI Gauge"
+
+# https://www.seeedstudio.com/LED-Driver-Board-for-Seeed-Studio-XIAO-p-6451.html
+# https://wiki.seeedstudio.com/led_driver_board/
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    # DUMMY key - replace before flashing! Generate your own with:
+    #   openssl rand -base64 32
+    # (must be valid base64 of 32 bytes; this placeholder decodes to
+    #  "esphome_dummy_key_replace_me_!!!")
+    key: "ZXNwaG9tZV9kdW1teV9rZXlfcmVwbGFjZV9tZV8hISE="
+
+ota:
+  - platform: esphome
+    # DUMMY - replace before flashing (any string).
+    password: "changeme"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Seeed-Ledbar Fallback Hotspot"
+    # DUMMY - replace before flashing (8–63 chars).
+    password: "changeme"
+
+  use_address: 192.168.5.182
+  
+captive_portal:
+
+sensor:
+  - platform: homeassistant
+    id: air_quality
+    entity_id: sensor.air_quality_score   # deine HA-Entity
+
+number:
+  - platform: template
+    name: "AQI Schwelle Grün"
+    id: threshold_green
+    min_value: 1
+    max_value: 30
+    step: 1
+    initial_value: 5
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "AQI Schwelle Warnung"
+    id: threshold_warn
+    min_value: 50
+    max_value: 100
+    step: 1
+    initial_value: 85
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "AQI Schwelle Kritisch"
+    id: threshold_critical
+    min_value: 80
+    max_value: 100
+    step: 1
+    initial_value: 95
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "Helligkeit Min"
+    id: brightness_min
+    min_value: 1
+    max_value: 20
+    step: 1
+    initial_value: 5
+    restore_value: true
+    optimistic: true
+    unit_of_measurement: "%"
+    entity_category: config
+
+  - platform: template
+    name: "Helligkeit Max"
+    id: brightness_max
+    min_value: 20
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    optimistic: true
+    unit_of_measurement: "%"
+    entity_category: config
+
+light:
+  - platform: esp32_rmt_led_strip
+    name: "Grove RGB LED Stick"
+    id: aqi_strip
+    pin: GPIO07
+    num_leds: 10
+    chipset: WS2812          # WS2813 = WS2812-Timing
+    rgb_order: GRB
+    gamma_correct: 1.0 # so 1% color in homeassistant works aswell.
+    default_transition_length: 0s
+    effects:
+      - addressable_rainbow:
+          name: "Rainbow"
+          speed: 10
+          width: 50
+      - addressable_rainbow:
+          name: "Rainbow langsam"
+          speed: 3
+          width: 10
+      - addressable_color_wipe:
+          name: "Color Wipe"
+          colors:
+            - red: 100%
+              green: 100%
+              blue: 100%
+              num_leds: 1
+            - red: 0%
+              green: 0%
+              blue: 0%
+              num_leds: 1
+      - addressable_scan:
+          name: "Scan (Knight Rider)"
+          move_interval: 80ms
+          scan_width: 1
+      - addressable_twinkle:
+          name: "Twinkle"
+          twinkle_probability: 5%
+          progress_interval: 4ms
+      - addressable_random_twinkle:
+          name: "Random Twinkle"
+          twinkle_probability: 5%
+          progress_interval: 32ms
+      - addressable_fireworks:
+          name: "Fireworks"
+          update_interval: 32ms
+          spark_probability: 10%
+          use_random_color: true
+          fade_out_rate: 120
+      - addressable_flicker:
+          name: "Flicker"
+          update_interval: 16ms
+          intensity: 5%
+      - pulse:
+          name: "Pulse"
+      - strobe:
+          name: "Strobe"
+      - addressable_lambda:
+          name: "AQI Gauge"
+          update_interval: 50ms
+          lambda: |-
+            // ── Guard: invalid config (div-by-zero) ──────────────────────
+            float tw = id(threshold_warn).state;
+            float tg = id(threshold_green).state;
+            float tc = id(threshold_critical).state;
+            float bmin = id(brightness_min).state / 100.0f;
+            float bmax = id(brightness_max).state / 100.0f;
+
+            if (tw <= tg) {
+              // degenerate config: all off
+              for (int i = 0; i < it.size(); i++) it[i] = Color(0, 0, 0);
+              return;
+            }
+
+            // ── Guard: no data from HA ───────────────────────────────────
+            if (!id(air_quality).has_state() || isnan(id(air_quality).state)) {
+              for (int i = 0; i < it.size(); i++) it[i] = Color(0, 0, 0);
+              return;
+            }
+
+            float v = id(air_quality).state;
+
+            // ── State 4: Critical - hard blink ───────────────────────────
+            // When thresholds are inverted (tc <= tw), State 4 activates at tw
+            // (State 3 has zero width - spec: "treat as immediately critical").
+            float critical_trigger = (tc <= tw) ? tw : tc;
+            if (v >= critical_trigger) {
+              bool on = (millis() % 400) < 200;
+              float br = on ? bmax : 0.0f;
+              uint8_t rv = (uint8_t)(255 * br);
+              Color c = on ? Color(rv, 0, 0) : Color(0, 0, 0);
+              for (int i = 0; i < it.size(); i++) it[i] = c;
+              return;
+            }
+
+            // ── State 3: Warning - sine breathing ────────────────────────
+            // millis() % 4000 keeps value small before float promotion,
+            // preventing precision loss after ~4.6 hours of uptime.
+            if (v >= tw) {
+              float phase = 0.5f + 0.5f * sinf(2.0f * 3.14159265f * (float)(millis() % 4000) / 4000.0f);
+              float br = bmin + (bmax - bmin) * phase;
+              if (br < 0.0f) br = 0.0f;
+              if (br > 1.0f) br = 1.0f;
+              uint8_t rv = (uint8_t)(255 * br);
+              for (int i = 0; i < it.size(); i++) it[i] = Color(rv, 0, 0);
+              return;
+            }
+
+            // ── State 1: Very Good - 2 green LEDs at center ──────────────
+            if (v < tg) {
+              float br = (bmin + bmax) * 0.5f;
+              uint8_t gv = (uint8_t)(255 * br);
+              int c = it.size() / 2 - 1;  // LED 4 for 10-LED strip
+              for (int i = 0; i < it.size(); i++)
+                it[i] = (i == c || i == c + 1) ? Color(0, gv, 0) : Color(0, 0, 0);
+              return;
+            }
+
+            // ── State 2: Normal - gauge expands from center outward ───────
+            // half = lit/2 → LEDs within that radius of center are on.
+            // With center=4.5 and dist<=half (not strict), lit=1 already
+            // covers both LEDs 4 and 5 (dist=0.5), so minimum 2 are always on.
+            int n = it.size();
+            float center = (n - 1) / 2.0f;  // 4.5 for 10 LEDs
+            int lit = (int)fminf((float)n, fmaxf(1.0f,
+              roundf((v - tg) / (tw - tg) * (float)n)));
+            float half = lit / 2.0f;
+            float bmid = (bmin + bmax) * 0.5f;
+
+            for (int i = 0; i < n; i++) {
+              float dist = fabsf((float)i - center);
+              if (dist > half) {
+                it[i] = Color(0, 0, 0);
+                continue;
+              }
+              // hue by distance from center: 0=green (good), edge=red (worse)
+              float dist_norm = dist / (n / 2.0f);
+              float hue = 120.0f * (1.0f - dist_norm);
+              float h_seg = hue / 60.0f;
+              float r, g;
+              if (h_seg <= 1.0f) { r = 1.0f;        g = h_seg; }
+              else               { r = 2.0f - h_seg; g = 1.0f;  }
+              uint8_t rv = (uint8_t)(255 * r * bmid);
+              uint8_t gv = (uint8_t)(255 * g * bmid);
+              it[i] = Color(rv, gv, 0);
+            }

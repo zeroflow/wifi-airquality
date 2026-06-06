@@ -1,0 +1,8 @@
+# ESPHome build cache & generated files
+/.esphome/
+.esphome/
+*.bin
+*.elf
+
+# Secrets - provide your own secrets.yaml (see README)
+secrets.yaml
