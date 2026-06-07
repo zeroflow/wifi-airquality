@@ -50,12 +50,13 @@ captive_portal:
 sensor:
   - platform: homeassistant
     id: air_quality
-    entity_id: sensor.air_quality_score   # deine HA-Entity
+    entity_id: sensor.air_quality_score   # your HA entity
 
 number:
   - platform: template
-    name: "AQI Schwelle Grün"
+    name: "AQI Threshold Green"
     id: threshold_green
+    mode: box
     min_value: 1
     max_value: 30
     step: 1
@@ -65,8 +66,9 @@ number:
     entity_category: config
 
   - platform: template
-    name: "AQI Schwelle Warnung"
+    name: "AQI Threshold Warning"
     id: threshold_warn
+    mode: box
     min_value: 50
     max_value: 100
     step: 1
@@ -76,8 +78,9 @@ number:
     entity_category: config
 
   - platform: template
-    name: "AQI Schwelle Kritisch"
+    name: "AQI Threshold Critical"
     id: threshold_critical
+    mode: box
     min_value: 80
     max_value: 100
     step: 1
@@ -87,24 +90,26 @@ number:
     entity_category: config
 
   - platform: template
-    name: "Helligkeit Min"
-    id: brightness_min
-    min_value: 1
-    max_value: 20
+    name: "Brightness"
+    id: brightness
+    mode: box
+    min_value: 0
+    max_value: 100
     step: 1
-    initial_value: 5
+    initial_value: 10
     restore_value: true
     optimistic: true
     unit_of_measurement: "%"
     entity_category: config
 
   - platform: template
-    name: "Helligkeit Max"
-    id: brightness_max
-    min_value: 20
+    name: "Breath Depth"
+    id: breath
+    mode: box
+    min_value: 0
     max_value: 100
     step: 1
-    initial_value: 50
+    initial_value: 80
     restore_value: true
     optimistic: true
     unit_of_measurement: "%"
@@ -118,54 +123,39 @@ light:
     num_leds: 10
     chipset: WS2812          # WS2813 = WS2812-Timing
     rgb_order: GRB
-    gamma_correct: 1.0 # so 1% color in homeassistant works aswell.
+    gamma_correct: 1.0 # so 1% color in homeassistant works as well.
     default_transition_length: 0s
     effects:
+      # Status effects: Home Assistant sets the color, the effect provides the
+      # motion or meaning. "Solid" needs no effect (just set the color).
+      - pulse:
+          name: "Breathe"          # calm / ok / info, soft breathing
+          transition_length: 1s
+          update_interval: 1s
+      - pulse:
+          name: "Blink"            # attention / warning, hard on/off ~1 Hz
+          transition_length: 0s
+          update_interval: 500ms
+      - pulse:
+          name: "Blink Fast"       # urgent / error / alarm
+          transition_length: 0s
+          update_interval: 200ms
+      - addressable_scan:
+          name: "Scan"             # activity / busy / running
+          move_interval: 80ms
+          scan_width: 1
+      - addressable_flicker:
+          name: "Flicker"          # live / unstable signal
+          update_interval: 16ms
+          intensity: 5%
       - addressable_rainbow:
-          name: "Rainbow"
+          name: "Rainbow"          # celebrate / neutral idle
           speed: 10
           width: 50
       - addressable_rainbow:
-          name: "Rainbow langsam"
+          name: "Rainbow Slow"     # gentle idle
           speed: 3
           width: 10
-      - addressable_color_wipe:
-          name: "Color Wipe"
-          colors:
-            - red: 100%
-              green: 100%
-              blue: 100%
-              num_leds: 1
-            - red: 0%
-              green: 0%
-              blue: 0%
-              num_leds: 1
-      - addressable_scan:
-          name: "Scan (Knight Rider)"
-          move_interval: 80ms
-          scan_width: 1
-      - addressable_twinkle:
-          name: "Twinkle"
-          twinkle_probability: 5%
-          progress_interval: 4ms
-      - addressable_random_twinkle:
-          name: "Random Twinkle"
-          twinkle_probability: 5%
-          progress_interval: 32ms
-      - addressable_fireworks:
-          name: "Fireworks"
-          update_interval: 32ms
-          spark_probability: 10%
-          use_random_color: true
-          fade_out_rate: 120
-      - addressable_flicker:
-          name: "Flicker"
-          update_interval: 16ms
-          intensity: 5%
-      - pulse:
-          name: "Pulse"
-      - strobe:
-          name: "Strobe"
       - addressable_lambda:
           name: "AQI Gauge"
           update_interval: 50ms
@@ -174,8 +164,9 @@ light:
             float tw = id(threshold_warn).state;
             float tg = id(threshold_green).state;
             float tc = id(threshold_critical).state;
-            float bmin = id(brightness_min).state / 100.0f;
-            float bmax = id(brightness_max).state / 100.0f;
+            float bright = id(brightness).state / 100.0f;
+            float depth = id(breath).state / 100.0f;
+            float bfloor = bright * (1.0f - depth);  // breath floor
 
             if (tw <= tg) {
               // degenerate config: all off
@@ -191,25 +182,25 @@ light:
 
             float v = id(air_quality).state;
 
-            // ── State 4: Critical - hard blink ───────────────────────────
+            // ── State 4: Critical — hard blink ───────────────────────────
             // When thresholds are inverted (tc <= tw), State 4 activates at tw
-            // (State 3 has zero width - spec: "treat as immediately critical").
+            // (State 3 has zero width — spec: "treat as immediately critical").
             float critical_trigger = (tc <= tw) ? tw : tc;
             if (v >= critical_trigger) {
               bool on = (millis() % 400) < 200;
-              float br = on ? bmax : 0.0f;
+              float br = on ? bright : 0.0f;
               uint8_t rv = (uint8_t)(255 * br);
               Color c = on ? Color(rv, 0, 0) : Color(0, 0, 0);
               for (int i = 0; i < it.size(); i++) it[i] = c;
               return;
             }
 
-            // ── State 3: Warning - sine breathing ────────────────────────
+            // ── State 3: Warning — sine breathing ────────────────────────
             // millis() % 4000 keeps value small before float promotion,
             // preventing precision loss after ~4.6 hours of uptime.
             if (v >= tw) {
               float phase = 0.5f + 0.5f * sinf(2.0f * 3.14159265f * (float)(millis() % 4000) / 4000.0f);
-              float br = bmin + (bmax - bmin) * phase;
+              float br = bfloor + (bright - bfloor) * phase;
               if (br < 0.0f) br = 0.0f;
               if (br > 1.0f) br = 1.0f;
               uint8_t rv = (uint8_t)(255 * br);
@@ -217,9 +208,9 @@ light:
               return;
             }
 
-            // ── State 1: Very Good - 2 green LEDs at center ──────────────
+            // ── State 1: Very Good — 2 green LEDs at center ──────────────
             if (v < tg) {
-              float br = (bmin + bmax) * 0.5f;
+              float br = bright;
               uint8_t gv = (uint8_t)(255 * br);
               int c = it.size() / 2 - 1;  // LED 4 for 10-LED strip
               for (int i = 0; i < it.size(); i++)
@@ -228,30 +219,36 @@ light:
             }
 
             // ── State 2: Normal - gauge expands from center outward ───────
+            // Both channels encode the same level t = (v-tg)/(tw-tg):
+            //   - count: how many LEDs are lit (gauge grows with t)
+            //   - color: uniform hue green→yellow→red (shifts with t)
+            // This keeps the ends coherent: t→0 is green like State 1's
+            // center, t→1 is red like State 3, so the bar fills AND reddens
+            // in lockstep instead of holding a fixed green-center rainbow.
+            //
             // half = lit/2 → LEDs within that radius of center are on.
             // With center=4.5 and dist<=half (not strict), lit=1 already
             // covers both LEDs 4 and 5 (dist=0.5), so minimum 2 are always on.
             int n = it.size();
             float center = (n - 1) / 2.0f;  // 4.5 for 10 LEDs
-            int lit = (int)fminf((float)n, fmaxf(1.0f,
-              roundf((v - tg) / (tw - tg) * (float)n)));
+            float t = (v - tg) / (tw - tg);
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+            int lit = (int)fminf((float)n, fmaxf(1.0f, roundf(t * (float)n)));
             float half = lit / 2.0f;
-            float bmid = (bmin + bmax) * 0.5f;
+            float bmid = bright;
+
+            // hue by level: t=0 green (120°), t=1 red (0°)
+            float hue = 120.0f * (1.0f - t);
+            float h_seg = hue / 60.0f;
+            float r, g;
+            if (h_seg <= 1.0f) { r = 1.0f;        g = h_seg; }
+            else               { r = 2.0f - h_seg; g = 1.0f;  }
+            uint8_t rv = (uint8_t)(255 * r * bmid);
+            uint8_t gv = (uint8_t)(255 * g * bmid);
+            Color lit_color = Color(rv, gv, 0);
 
             for (int i = 0; i < n; i++) {
               float dist = fabsf((float)i - center);
-              if (dist > half) {
-                it[i] = Color(0, 0, 0);
-                continue;
-              }
-              // hue by distance from center: 0=green (good), edge=red (worse)
-              float dist_norm = dist / (n / 2.0f);
-              float hue = 120.0f * (1.0f - dist_norm);
-              float h_seg = hue / 60.0f;
-              float r, g;
-              if (h_seg <= 1.0f) { r = 1.0f;        g = h_seg; }
-              else               { r = 2.0f - h_seg; g = 1.0f;  }
-              uint8_t rv = (uint8_t)(255 * r * bmid);
-              uint8_t gv = (uint8_t)(255 * g * bmid);
-              it[i] = Color(rv, gv, 0);
+              it[i] = (dist > half) ? Color(0, 0, 0) : lit_color;
             }
