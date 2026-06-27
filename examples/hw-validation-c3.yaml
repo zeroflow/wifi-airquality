@@ -1,0 +1,22 @@
+# examples/hw-validation-c3.yaml
+#
+# Minimal consumer validation stub — XIAO ESP32-C3 + Grove LED Driver (I2C variant)
+# Composes: packages/hardware/xiao-esp32c3.yaml + packages/hardware/grove-led-driver-i2c.yaml
+#
+# Purpose: Integration gate. Proves the C3 board package and the i2c variant LED driver
+# package merge cleanly under `esphome config`, and that ${pin_a0} resolves to GPIO2
+# and ${pin_d3} resolves to GPIO5 on the C3. Not intended for flashing.
+#
+# No I2C/OLED/RTC/buzzer in this stub — C3 + LED driver has no expansion base.
+# No networking blocks — stays in the real consumer's config.
+# No credentials in this file — dummy secrets.yaml is read by the harness but not referenced here.
+
+packages:
+  mcu:    !include ../packages/hardware/xiao-esp32c3.yaml
+  shield: !include ../packages/hardware/grove-led-driver-i2c.yaml
+
+esphome:
+  name: hw-validation-c3
+  friendly_name: HW Validation C3
+
+logger:

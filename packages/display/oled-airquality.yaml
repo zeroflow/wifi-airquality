@@ -1,0 +1,65 @@
+# packages/display/oled-airquality.yaml
+#
+# OLED air-quality display package (Layer 2 — code).
+# !extends the hardware-owned oled component (declared by grove-expansion-base.yaml).
+#
+# This file overrides only the lambda: scalar of the oled display entity.
+# All hardware-defined fields (platform, model, address, i2c_id, update_interval)
+# are preserved unchanged by the ESPHome !extend merge.
+#
+# Depends on cross-package ids (resolved only in composition — never standalone):
+#   From grove-expansion-base.yaml : roboto (font)
+#   From sen55.yaml                : sen_pm25, sen_pm10, sen_voc, sen_nox
+#   From sht41.yaml                : sht_temp, sht_hum
+#
+# IMPORTANT — Pitfall 1: This file validates only in composition (e.g. sensor-station.yaml).
+# Do NOT add it to examples/ for standalone validation — the cross-package ids above
+# do not exist in isolation and esphome config will fail with unknown-id errors.
+#
+# Import (in consumer config):
+#   packages:
+#     oled_display: github://zeroflow/wifi-airquality/packages/display/oled-airquality.yaml@v1.0.0
+#   # or for local development:
+#   # oled_display: !include packages/display/oled-airquality.yaml
+
+display:
+  - id: !extend oled
+    lambda: |-
+      // Row 0: Temperature / Relative Humidity
+      if (isnan(id(sht_temp).state)) {
+        it.printf(0,  0, id(roboto), "--\xc2\xb0\x43");
+      } else {
+        it.printf(0,  0, id(roboto), "%.1f\xc2\xb0\x43", id(sht_temp).state);
+      }
+      if (isnan(id(sht_hum).state)) {
+        it.printf(64, 0, id(roboto), "--%");
+      } else {
+        it.printf(64, 0, id(roboto), "%.0f%%", id(sht_hum).state);
+      }
+      // Row 16: PM2.5 / PM10
+      if (isnan(id(sen_pm25).state)) {
+        it.printf(0,  16, id(roboto), "PM2.5:--");
+      } else {
+        it.printf(0,  16, id(roboto), "PM2.5:%.0f", id(sen_pm25).state);
+      }
+      if (isnan(id(sen_pm10).state)) {
+        it.printf(64, 16, id(roboto), "10:--");
+      } else {
+        it.printf(64, 16, id(roboto), "10:%.0f", id(sen_pm10).state);
+      }
+      // Row 32: VOC / NOx
+      if (isnan(id(sen_voc).state)) {
+        it.printf(0,  32, id(roboto), "VOC:--");
+      } else {
+        it.printf(0,  32, id(roboto), "VOC:%.0f", id(sen_voc).state);
+      }
+      if (isnan(id(sen_nox).state)) {
+        it.printf(64, 32, id(roboto), "NOX:--");
+      } else {
+        it.printf(64, 32, id(roboto), "NOX:%.0f", id(sen_nox).state);
+      }
+      // VOC bar (row 50) — NaN-guarded; defaults to empty bar before first sensor read
+      int voc_val = isnan(id(sen_voc).state) ? 0 : clamp((int)id(sen_voc).state, 0, 500);
+      int bar_w = (voc_val * 126) / 500;
+      it.rectangle(0, 50, 128, 10);
+      it.filled_rectangle(1, 51, bar_w, 8);

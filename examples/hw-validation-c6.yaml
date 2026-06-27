@@ -1,0 +1,24 @@
+# examples/hw-validation-c6.yaml
+#
+# Minimal consumer validation stub — XIAO ESP32-C6 + Grove Expansion Base
+# Composes: packages/hardware/xiao-esp32c6.yaml + packages/hardware/grove-expansion-base.yaml
+#
+# Purpose: Phase 2 integration gate for SC-1. Proves the C6 board package and the
+# expansion-base package merge cleanly under `esphome config`. Not intended for flashing.
+#
+# No networking blocks — stays in the real consumer's config.
+# No credentials in this file — dummy secrets.yaml is read by the harness but not referenced here.
+
+packages:
+  mcu:    !include ../packages/hardware/xiao-esp32c6.yaml
+  shield: !include ../packages/hardware/grove-expansion-base.yaml
+
+esphome:
+  name: hw-validation-c6
+  friendly_name: HW Validation C6
+
+# grove-expansion-base includes sntp which requires component network.
+# network: (empty) satisfies the dependency without credentials or real networking config.
+network:
+
+logger:

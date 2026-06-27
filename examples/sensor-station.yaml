@@ -1,0 +1,55 @@
+# examples/sensor-station.yaml
+#
+# Full sensor-station consumer example.
+# Composes: XIAO ESP32-C6 + Grove Expansion Base + SEN55 + SHT41 + OLED display.
+#
+# Packages are imported in order: hardware (mcu, shield), then sensors, then display.
+# Sensors must appear before oled_display so the sensor sub-ids (sen_pm25, sen_pm10,
+# sen_voc, sen_nox, sht_temp, sht_hum) are resolved before the !extend lambda references them.
+#
+# Consumer-owned networking: all per-user values (api_key, ota_password, wifi_ssid,
+# wifi_password) are sourced from secrets.yaml — never hard-coded here.
+# See examples/secrets.yaml for dummy placeholder values used during validation.
+#
+# Button autoclean wiring is added here (not in a package) via !extend user_button.
+
+packages:
+  mcu:          github://zeroflow/wifi-airquality/packages/hardware/xiao-esp32c6.yaml@v1.0.0
+  shield:       github://zeroflow/wifi-airquality/packages/hardware/grove-expansion-base.yaml@v1.0.0
+  sensors_sen:  github://zeroflow/wifi-airquality/packages/sensors/sen55.yaml@v1.0.0
+  sensors_sht:  github://zeroflow/wifi-airquality/packages/sensors/sht41.yaml@v1.0.0
+  oled_display: github://zeroflow/wifi-airquality/packages/display/oled-airquality.yaml@v1.0.0
+
+esphome:
+  name: sensor-station
+  friendly_name: Sensor Station
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Sensor-Station Fallback Hotspot"
+    password: !secret ota_password
+
+captive_portal:
+
+# --- Button: fan autoclean + beep on press ----------------------------------
+# Wired here (not in a package) per D-17: automations reference cross-package ids
+# and belong in the consumer config, not inside a package.
+
+binary_sensor:
+  - id: !extend user_button
+    on_press:
+      - sen5x.start_fan_autoclean: sen55
+      - rtttl.play:
+          rtttl: "clean:d=16,o=5,b=200:c,e,g"

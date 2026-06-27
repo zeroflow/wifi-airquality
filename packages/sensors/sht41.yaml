@@ -1,0 +1,37 @@
+# packages/sensors/sht41.yaml
+#
+# SHT41 temperature + humidity sensor package (Layer 2 — code).
+# Source: MVP sht4x block (sensor.yaml lines 167–173), extracted verbatim
+# with two additions: explicit i2c_id binding and update_interval substitution.
+#
+# Declared ids (owned by this file per ID-REGISTER.md):
+#   sht_temp, sht_hum
+# No top-level platform id — sub-entity ids only (sht4x has no id: at platform level in MVP).
+#
+# References bus_a via i2c_id — declared by grove-expansion-base.yaml (not redeclared here).
+# Address: 0x44 (sht4x default; matches Seeed SHT41 Grove module — not set explicitly).
+#
+# Overridable substitution key:
+#   sht41_update_interval: "60s"   (default; override in consumer config)
+#
+# Import:
+#   packages:
+#     sensors_sht: github://zeroflow/wifi-airquality/packages/sensors/sht41.yaml@v1.0.0
+#   # or for local development:
+#   # sensors_sht: !include packages/sensors/sht41.yaml
+
+substitutions:
+  sht41_update_interval: "60s"
+
+# --- SHT41 sensor ------------------------------------------------------------
+
+sensor:
+  - platform: sht4x
+    i2c_id: bus_a
+    update_interval: ${sht41_update_interval}
+    temperature:
+      name: "Temperature SHT41"
+      id: sht_temp
+    humidity:
+      name: "Humidity SHT41"
+      id: sht_hum

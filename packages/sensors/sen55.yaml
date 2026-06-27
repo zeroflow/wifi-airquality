@@ -1,0 +1,50 @@
+# packages/sensors/sen55.yaml
+#
+# SEN55 particulate + gas sensor package (Layer 2 — code).
+# Source: MVP sen5x block (sensor.yaml lines 143–165), extracted verbatim
+# with two additions: explicit i2c_id binding and update_interval substitution.
+#
+# Declared ids (owned by this file per ID-REGISTER.md):
+#   sen55, sen_pm25, sen_pm10, sen_voc, sen_nox
+#
+# References bus_a via i2c_id — declared by grove-expansion-base.yaml (not redeclared here).
+#
+# Overridable substitution key:
+#   sen55_update_interval: "60s"   (default; override in consumer config)
+#
+# Import:
+#   packages:
+#     sensors_sen: github://zeroflow/wifi-airquality/packages/sensors/sen55.yaml@v1.0.0
+#   # or for local development:
+#   # sensors_sen: !include packages/sensors/sen55.yaml
+
+substitutions:
+  sen55_update_interval: "60s"
+
+# --- SEN55 sensor ------------------------------------------------------------
+
+sensor:
+  - platform: sen5x
+    id: sen55
+    i2c_id: bus_a
+    update_interval: ${sen55_update_interval}
+    pm_1_0:
+      name: "PM <1µm Weight concentration"
+    pm_2_5:
+      name: "PM <2.5µm Weight concentration"
+      id: sen_pm25
+    pm_4_0:
+      name: "PM <4µm Weight concentration"
+    pm_10_0:
+      name: "PM <10µm Weight concentration"
+      id: sen_pm10
+    temperature:
+      name: "Temperature SEN55"
+    humidity:
+      name: "Humidity SEN55"
+    voc:
+      name: "VOC"
+      id: sen_voc
+    nox:
+      name: "NOX"
+      id: sen_nox
