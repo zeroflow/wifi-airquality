@@ -1,0 +1,21 @@
+# examples/ledbar-neopixel.yaml
+#
+# Minimal consumer validation stub — XIAO ESP32-C3 + Grove LED Driver (Neopixel variant)
+# Composes: packages/hardware/xiao-esp32c3.yaml + packages/hardware/grove-led-driver-neopixel.yaml
+#
+# Purpose: Validates the neopixel variant of the Grove LED Driver Board for XIAO.
+# Proves that aqi_strip (A0 / GPIO2), grove_strip (D5 / GPIO7), and driver_button (D3 / GPIO5)
+# all merge cleanly under `esphome config` on the C3. Not intended for flashing.
+#
+# No networking blocks — stays in the real consumer's config.
+# No credentials in this file.
+
+packages:
+  mcu:    !include ../packages/hardware/xiao-esp32c3.yaml
+  shield: !include ../packages/hardware/grove-led-driver-neopixel.yaml
+
+esphome:
+  name: ledbar-neopixel
+  friendly_name: Ledbar Neopixel
+
+logger:

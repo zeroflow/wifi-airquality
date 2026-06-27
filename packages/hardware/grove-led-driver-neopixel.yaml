@@ -1,0 +1,65 @@
+# packages/hardware/grove-led-driver-neopixel.yaml
+#
+# Seeed LED Driver Board for XIAO — Neopixel variant
+#
+# What this configures:
+#   aqi_strip     — WS2812 addressable LED strip on the terminal-block LED connector (A0)
+#   grove_strip   — second WS2812 strip on the Grove I2C connector repurposed as D5 data output
+#   driver_button — user button on D3 (INPUT_PULLUP, inverted, no automations)
+#
+# Grove I2C connector: REPURPOSED as a neopixel data output on D5.
+# The Grove connector is NOT available for I2C sensors/OLED in this variant.
+# Use the I2C variant (grove-led-driver-i2c.yaml) if you need the Grove connector for I2C.
+#
+# Requirements:
+#   - A XIAO board package (xiao-esp32c3.yaml or xiao-esp32c6.yaml) MUST be imported
+#     first; it exports the pin_a0, pin_d3, and pin_d5 substitutions consumed here.
+#
+# Note: aqi_strip and driver_button intentionally share ids with grove-led-driver-i2c.yaml.
+# These two packages are MUTUALLY EXCLUSIVE — a consumer imports exactly one. The variant
+# suffix (-i2c / -neopixel) is recognized by test-examples.sh Guard 2 as a sibling pair,
+# so the shared ids do not trigger the duplicate-id check.
+#
+# No effects, no networking, no secrets in this file.
+# Consumers add effects via !extend aqi_strip or !extend grove_strip.
+#
+# Import:
+#   packages:
+#     mcu:    github://zeroflow/wifi-airquality/packages/hardware/xiao-esp32c3.yaml@v1.0.0
+#     led_hw: github://zeroflow/wifi-airquality/packages/hardware/grove-led-driver-neopixel.yaml@v1.0.0
+#   # or for local development:
+#   # led_hw: !include packages/hardware/grove-led-driver-neopixel.yaml
+
+substitutions:
+  led_count_grove: "10"   # number of LEDs per strip; string form for ESPHome integer coercion
+  led_count_strip: "10"   # number of LEDs per strip; string form for ESPHome integer coercion
+
+light:
+  - platform: esp32_rmt_led_strip
+    name: "Grove RGB LED Stick"
+    id: aqi_strip
+    pin: ${pin_a0}
+    num_leds: ${led_count_grove}
+    chipset: WS2812
+    rgb_order: GRB
+    gamma_correct: 1.0
+    default_transition_length: 0s
+
+  - platform: esp32_rmt_led_strip
+    name: "Grove Connector LED Strip"
+    id: grove_strip
+    pin: ${pin_d5}
+    num_leds: ${led_count_strip}
+    chipset: WS2812
+    rgb_order: GRB
+    gamma_correct: 1.0
+    default_transition_length: 0s
+
+binary_sensor:
+  - platform: gpio
+    name: "Driver Button"
+    id: driver_button
+    pin:
+      number: ${pin_d3}
+      mode: INPUT_PULLUP
+      inverted: true

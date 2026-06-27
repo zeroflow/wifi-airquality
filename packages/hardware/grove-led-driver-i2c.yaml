@@ -1,0 +1,48 @@
+# packages/hardware/grove-led-driver-i2c.yaml
+#
+# Seeed LED Driver Board for XIAO — I2C variant
+#
+# What this configures:
+#   aqi_strip    — WS2812 addressable LED strip on the terminal-block LED connector (A0)
+#   driver_button — user button on D3 (INPUT_PULLUP, inverted, no automations)
+#
+# Grove I2C connector: LEFT FREE for the consumer.
+# Pair with grove-expansion-base.yaml or add your own i2c: block when you need
+# sensors / OLED on that connector. This variant does NOT use D5.
+#
+# Requirements:
+#   - A XIAO board package (xiao-esp32c3.yaml or xiao-esp32c6.yaml) MUST be imported
+#     first; it exports the pin_a0 and pin_d3 substitutions consumed here.
+#
+# No effects, no networking, no secrets in this file.
+# Consumers add effects via !extend aqi_strip.
+#
+# Import:
+#   packages:
+#     mcu:    github://zeroflow/wifi-airquality/packages/hardware/xiao-esp32c3.yaml@v1.0.0
+#     led_hw: github://zeroflow/wifi-airquality/packages/hardware/grove-led-driver-i2c.yaml@v1.0.0
+#   # or for local development:
+#   # led_hw: !include packages/hardware/grove-led-driver-i2c.yaml
+
+substitutions:
+  led_count_strip: "10"   # number of LEDs; string form for ESPHome integer coercion
+
+light:
+  - platform: esp32_rmt_led_strip
+    name: "Grove RGB LED Stick"
+    id: aqi_strip
+    pin: ${pin_a0}
+    num_leds: ${ledled_count_strip_count}
+    chipset: WS2812
+    rgb_order: GRB
+    gamma_correct: 1.0
+    default_transition_length: 0s
+
+binary_sensor:
+  - platform: gpio
+    name: "Driver Button"
+    id: driver_button
+    pin:
+      number: ${pin_d3}
+      mode: INPUT_PULLUP
+      inverted: true

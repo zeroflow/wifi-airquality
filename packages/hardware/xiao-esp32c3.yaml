@@ -1,0 +1,30 @@
+# packages/hardware/xiao-esp32c3.yaml
+#
+# Seeed XIAO ESP32-C3 board package.
+# Declares ONLY the MCU and framework — no identity, no networking.
+# Consumer owns: esphome.name, logger, api, ota, wifi, captive_portal.
+#
+# Pin-name substitutions (silkscreen → raw GPIO numbers)
+# -------------------------------------------------------
+# ESPHome 2026.5.0 (pinned) does not ship XIAO C3 silkscreen aliases (D-pin / A-pin).
+# PR #17002 adds them but targets unreleased 2026.6.0. This substitution map is the
+# approved workaround: feature packages reference ${pin_a0} / ${pin_d3} etc. directly
+# at point of use; no nested substitution-in-substitution indirection is introduced.
+# Authoritative GPIO numbers from esphome boards.py / PR #17002.
+#
+# Import:
+#   packages:
+#     mcu: github://zeroflow/wifi-airquality/packages/hardware/xiao-esp32c3.yaml@v1.0.0
+#   # or for local development:
+#   # mcu: !include packages/hardware/xiao-esp32c3.yaml
+
+substitutions:
+  pin_a0: "2"    # A0 silkscreen -> GPIO2
+  pin_d3: "5"    # D3 silkscreen -> GPIO5
+  pin_d4: "6"    # D4 / SDA      -> GPIO6
+  pin_d5: "7"    # D5 / SCL      -> GPIO7  (== legacy MVP GPIO07)
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf

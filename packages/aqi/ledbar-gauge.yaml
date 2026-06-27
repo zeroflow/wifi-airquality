@@ -1,0 +1,194 @@
+# packages/aqi/ledbar-gauge.yaml
+#
+# AQI Gauge code package (Layer 2 — code).
+# !extends the hardware-owned aqi_strip light (declared by grove-led-driver-i2c.yaml).
+#
+# This file adds only the "AQI Gauge" addressable_lambda effect.
+# Decorative effects (Rainbow, Scan, etc.) are NOT included; consumers
+# add them with their own !extend aqi_strip if wanted.
+#
+# Depends on cross-package id (resolved only in composition — never standalone):
+#   From grove-led-driver-i2c.yaml : aqi_strip
+#
+# IMPORTANT — This file validates only in composition (e.g. examples/ledbar.yaml).
+# Do NOT add it to examples/ for standalone validation.
+#
+# Substitutions:
+#   aqi_entity_id: sensor.air_quality_score  # override to match your HA entity
+#
+# Import (in consumer config):
+#   packages:
+#     aqi_gauge: github://zeroflow/wifi-airquality/packages/aqi/ledbar-gauge.yaml@v1.0.0
+#   # or for local development:
+#   # aqi_gauge: !include packages/aqi/ledbar-gauge.yaml
+
+substitutions:
+  aqi_entity_id: sensor.air_quality_score
+
+sensor:
+  - platform: homeassistant
+    id: air_quality
+    entity_id: ${aqi_entity_id}
+
+number:
+  - platform: template
+    name: "AQI Threshold Green"
+    id: threshold_green
+    mode: box
+    min_value: 1
+    max_value: 30
+    step: 1
+    initial_value: 5
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "AQI Threshold Warning"
+    id: threshold_warn
+    mode: box
+    min_value: 50
+    max_value: 100
+    step: 1
+    initial_value: 85
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "AQI Threshold Critical"
+    id: threshold_critical
+    mode: box
+    min_value: 80
+    max_value: 100
+    step: 1
+    initial_value: 95
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+  - platform: template
+    name: "Brightness"
+    id: brightness
+    mode: box
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 10
+    restore_value: true
+    optimistic: true
+    unit_of_measurement: "%"
+    entity_category: config
+
+  - platform: template
+    name: "Breath Depth"
+    id: breath
+    mode: box
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 80
+    restore_value: true
+    optimistic: true
+    unit_of_measurement: "%"
+    entity_category: config
+
+light:
+  - id: !extend aqi_strip
+    effects:
+      - addressable_lambda:
+          name: "AQI Gauge"
+          update_interval: 50ms
+          lambda: |-
+            // ── Guard: invalid config (div-by-zero) ──────────────────────
+            float tw = id(threshold_warn).state;
+            float tg = id(threshold_green).state;
+            float tc = id(threshold_critical).state;
+            float bright = id(brightness).state / 100.0f;
+            float depth = id(breath).state / 100.0f;
+            float bfloor = bright * (1.0f - depth);  // breath floor
+
+            if (tw <= tg) {
+              // degenerate config: all off
+              for (int i = 0; i < it.size(); i++) it[i] = Color(0, 0, 0);
+              return;
+            }
+
+            // ── Guard: no data from HA ───────────────────────────────────
+            if (!id(air_quality).has_state() || isnan(id(air_quality).state)) {
+              for (int i = 0; i < it.size(); i++) it[i] = Color(0, 0, 0);
+              return;
+            }
+
+            float v = id(air_quality).state;
+
+            // ── State 4: Critical — hard blink ───────────────────────────
+            // When thresholds are inverted (tc <= tw), State 4 activates at tw
+            // (State 3 has zero width — spec: "treat as immediately critical").
+            float critical_trigger = (tc <= tw) ? tw : tc;
+            if (v >= critical_trigger) {
+              bool on = (millis() % 400) < 200;
+              float br = on ? bright : 0.0f;
+              uint8_t rv = (uint8_t)(255 * br);
+              Color c = on ? Color(rv, 0, 0) : Color(0, 0, 0);
+              for (int i = 0; i < it.size(); i++) it[i] = c;
+              return;
+            }
+
+            // ── State 3: Warning — sine breathing ────────────────────────
+            // millis() % 4000 keeps value small before float promotion,
+            // preventing precision loss after ~4.6 hours of uptime.
+            if (v >= tw) {
+              float phase = 0.5f + 0.5f * sinf(2.0f * 3.14159265f * (float)(millis() % 4000) / 4000.0f);
+              float br = bfloor + (bright - bfloor) * phase;
+              if (br < 0.0f) br = 0.0f;
+              if (br > 1.0f) br = 1.0f;
+              uint8_t rv = (uint8_t)(255 * br);
+              for (int i = 0; i < it.size(); i++) it[i] = Color(rv, 0, 0);
+              return;
+            }
+
+            // ── State 1: Very Good — 2 green LEDs at center ──────────────
+            if (v < tg) {
+              float br = bright;
+              uint8_t gv = (uint8_t)(255 * br);
+              int c = it.size() / 2 - 1;  // LED 4 for 10-LED strip
+              for (int i = 0; i < it.size(); i++)
+                it[i] = (i == c || i == c + 1) ? Color(0, gv, 0) : Color(0, 0, 0);
+              return;
+            }
+
+            // ── State 2: Normal - gauge expands from center outward ───────
+            // Both channels encode the same level t = (v-tg)/(tw-tg):
+            //   - count: how many LEDs are lit (gauge grows with t)
+            //   - color: uniform hue green→yellow→red (shifts with t)
+            // This keeps the ends coherent: t→0 is green like State 1's
+            // center, t→1 is red like State 3, so the bar fills AND reddens
+            // in lockstep instead of holding a fixed green-center rainbow.
+            //
+            // half = lit/2 → LEDs within that radius of center are on.
+            // With center=4.5 and dist<=half (not strict), lit=1 already
+            // covers both LEDs 4 and 5 (dist=0.5), so minimum 2 are always on.
+            int n = it.size();
+            float center = (n - 1) / 2.0f;  // 4.5 for 10 LEDs
+            float t = (v - tg) / (tw - tg);
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+            int lit = (int)fminf((float)n, fmaxf(1.0f, roundf(t * (float)n)));
+            float half = lit / 2.0f;
+            float bmid = bright;
+
+            // hue by level: t=0 green (120°), t=1 red (0°)
+            float hue = 120.0f * (1.0f - t);
+            float h_seg = hue / 60.0f;
+            float r, g;
+            if (h_seg <= 1.0f) { r = 1.0f;        g = h_seg; }
+            else               { r = 2.0f - h_seg; g = 1.0f;  }
+            uint8_t rv = (uint8_t)(255 * r * bmid);
+            uint8_t gv = (uint8_t)(255 * g * bmid);
+            Color lit_color = Color(rv, gv, 0);
+
+            for (int i = 0; i < n; i++) {
+              float dist = fabsf((float)i - center);
+              it[i] = (dist > half) ? Color(0, 0, 0) : lit_color;
+            }

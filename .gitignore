@@ -5,4 +5,4 @@
 *.elf
 
 # Secrets - provide your own secrets.yaml (see README)
-secrets.yaml
+/secrets.yaml

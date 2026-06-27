@@ -1,0 +1,92 @@
+# packages/hardware/grove-expansion-base.yaml
+#
+# Seeed Studio Expansion Base for XIAO — onboard peripheral package.
+#
+# Configures all hardware on the XIAO Expansion Base:
+#   - I2C bus bus_a (SDA=D4 / SCL=D5, overridable via substitutions)
+#   - 0.96" SSD1306 OLED display (0x3C) — shows clock by default
+#   - PCF8563 RTC (0x51) + SNTP write-back
+#   - Passive buzzer (D3) via LEDC output + rtttl player
+#   - User button (D1, INPUT_PULLUP, inverted) — bare GPIO, no automations
+#
+# Declared ids (owned by this file per ID-REGISTER.md):
+#   bus_a, roboto, oled, rtc_time, sntp_time, buzzer_out, buzzer, user_button
+#
+# Override the OLED lambda without forking:
+#   display:
+#     - id: !extend oled
+#       lambda: |-
+#         it.printf(0, 0, id(roboto), "your content");
+#
+# Consumer owns: esphome.name, logger, api, ota, wifi, captive_portal, board package.
+#
+# Import:
+#   packages:
+#     shield: github://zeroflow/wifi-airquality/packages/hardware/grove-expansion-base.yaml@v1.0.0
+#   # or for local development:
+#   # shield: !include packages/hardware/grove-expansion-base.yaml
+
+substitutions:
+  i2c_sda: D4
+  i2c_scl: D5
+
+# --- I2C bus ----------------------------------------------------------------
+
+i2c:
+  sda: ${i2c_sda}
+  scl: ${i2c_scl}
+  scan: true
+  id: bus_a
+
+# --- Display ----------------------------------------------------------------
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto
+    size: 14
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    i2c_id: bus_a
+    id: oled
+    update_interval: 1s
+    lambda: |-
+      it.strftime(0, 0, id(roboto), "%H:%M", id(rtc_time).now());
+
+# --- RTC + SNTP time --------------------------------------------------------
+
+time:
+  - platform: pcf8563
+    address: 0x51
+    i2c_id: bus_a
+    id: rtc_time
+    update_interval: never
+  - platform: sntp
+    id: sntp_time
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
+
+# --- Passive buzzer (D3) ----------------------------------------------------
+
+output:
+  - platform: ledc
+    pin: D3
+    id: buzzer_out
+
+rtttl:
+  output: buzzer_out
+  id: buzzer
+
+# --- User button (D1) -------------------------------------------------------
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: D1
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "User Button"
+    id: user_button
